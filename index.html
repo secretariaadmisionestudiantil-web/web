@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor de Imagen a Excel</title>
+    <!-- Tailwind CSS para un diseño moderno y limpio -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- biblioteca SheetJS para generar archivos Excel reales en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col justify-between">
+
+    <div class="max-w-4xl mx-auto my-10 p-8 bg-white rounded-xl shadow-md w-full">
+        <h1 class="text-3xl font-bold text-center text-emerald-800 mb-2">Conversor de Tablas: Imagen a Excel</h1>
+        <p class="text-gray-600 text-center mb-8">Sube una foto de tu tabla o plan de contenido para digitalizarla al instante.</p>
+
+        <!-- Configuración de API Key (Ya cargada con tu clave) -->
+        <div class="mb-6 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+            <label class="block text-sm font-semibold text-emerald-900 mb-1">1. Tu Gemini API Key (Ya configurada):</label>
+            <input type="password" id="apiKey" class="w-full p-2 border border-emerald-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" value="AQ.Ab8RN6IUSL6AIOTQ0td15V6TAuP7DojCpCun-lO4fI5C2wtNYg" placeholder="AIzaSy...">
+            <p class="text-xs text-emerald-700 mt-1">Tu clave está guardada localmente en este archivo y se ejecuta de forma segura desde tu navegador.</p>
+        </div>
+
+        <!-- Zona de Carga de Imagen -->
+        <div class="mb-6">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">2. Selecciona tu Imagen:</label>
+            <div class="flex items-center justify-center w-full">
+                <label class="flex flex-col items-center justify-center w-full h-44 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                        <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Haz clic para cargar</span> o arrastra tu archivo</p>
+                        <p class="text-xs text-gray-400">PNG, JPG o JPEG</p>
+                    </div>
+                    <input id="imageInput" type="file" accept="image/*" class="hidden" />
+                </label>
+            </div>
+        </div>
+
+        <!-- Vista previa de imagen -->
+        <div id="previewContainer" class="hidden mb-6 text-center">
+            <p class="text-xs font-semibold text-gray-500 mb-2">Vista previa:</p>
+            <img id="imagePreview" class="max-h-48 mx-auto rounded shadow-sm border">
+        </div>
+
+        <!-- Botón de acción -->
+        <button id="processBtn" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow disabled:bg-gray-400 disabled:cursor-not-allowed">
+            Procesar y Descargar Excel
+        </button>
+
+        <!-- Pantalla de carga / Estado -->
+        <div id="statusMessage" class="hidden mt-6 p-4 rounded-lg text-center font-medium"></div>
+    </div>
+
+    <footer class="text-center py-4 text-xs text-gray-400">
+        Conversor Local IA • Hecho para automatizar tus planes de contenido.
+    </footer>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const previewContainer = document.getElementById('previewContainer');
+        const processBtn = document.getElementById('processBtn');
+        const statusMessage = document.getElementById('statusMessage');
+
+        // Mostrar vista previa de la imagen seleccionada
+        imageInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    previewContainer.classList.remove('hidden');
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Lógica principal al presionar el botón
+        processBtn.addEventListener('click', async () => {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const file = imageInput.files[0];
+
+            if (!apiKey) {
+                showStatus('Por favor, introduce tu Gemini API Key.', 'bg-red-100', 'text-red-800');
+                return;
+            }
+            if (!file) {
+                showStatus('Por favor, selecciona una imagen primero.', 'bg-red-100', 'text-red-800');
+                return;
+            }
+
+            // Bloquear botón y mostrar carga
+            processBtn.disabled = true;
+            showStatus('Analizando imagen con IA y estructurando datos... Por favor espera.', 'bg-blue-100', 'text-blue-800');
+
+            try {
+                // Convertir imagen a Base64 requerido por la API
+                const base64Data = await fileToBase64(file);
+                const base64Content = base64Data.split(',')[1];
+                const mimeType = file.type;
+
+                // Prompt especializado para devolver un JSON limpio estructurado por filas de Excel
+                const promptText = "Analiza la imagen adjunta que contiene tablas de datos o un plan de contenidos. Extrae toda la información textualmente y estructúrala en un formato JSON plano que represente las filas de una hoja de cálculo. Devuelve UNICAMENTE un arreglo JSON de arreglos (ejemplo: [['Encabezado1', 'Encabezado2'], ['Dato1', 'Dato2']]). Si hay múltiples tablas separadas en la imagen, añade una fila vacía o un separador de texto para diferenciarlas en el mismo archivo. No devuelvas explicaciones, marcas markdown, ni texto adicional fuera del JSON.";
+
+                // Llamada a la API de Gemini 1.5 Flash
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: promptText },
+                                { inlineData: { mimeType: mimeType, data: base64Content } }
+                            ]
+                        }]
+                    })
+                });
+
+                if (!response.ok) throw new Error('Error en la respuesta de la API. Verifica que tu API Key sea correcta y activa.');
+
+                const result = await response.json();
+                let textResponse = result.candidates[0].content.parts[0].text;
+                
+                // Limpiar posibles bloques de código markdown que devuelva la IA
+                textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                
+                const tableData = JSON.parse(textResponse);
+
+                // Crear y descargar el archivo Excel usando SheetJS
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(tableData);
+                XLSX.utils.book_append_sheet(wb, ws, "Datos Extraídos");
+                
+                XLSX.writeFile(wb, "Tabla_Digitalizada.xlsx");
+
+                showStatus('¡Éxito! Tu archivo Excel se ha descargado automáticamente.', 'bg-green-100', 'text-green-800');
+            } catch (error) {
+                console.error(error);
+                showStatus('Ocurrió un error al procesar el archivo: ' + error.message, 'bg-red-100', 'text-red-800');
+            } finally {
+                processBtn.disabled = false;
+            }
+        });
+
+        // Funciones auxiliares
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        function showStatus(message, bgColor, textColor) {
+            statusMessage.className = `mt-6 p-4 rounded-lg text-center font-medium ${bgColor} ${textColor}`;
+            statusMessage.innerText = message;
+            statusMessage.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
